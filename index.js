@@ -13,35 +13,37 @@ app.use(express.json({ limit: "20mb" }));
 app.post("/compare", async (req, res) => {
   try {
     const files = req.body;
-
-    if (!Array.isArray(files) || files.length !== 2) {
+    
+    if (!Array.isArray(files) || files.length < 2) {
       return res.status(400).json({
         status: false,
-        message: "Send exactly two files in an array with 'name' and 'contentBytes'."
+        message: "At least two files are required."
       });
     }
 
-    const [file1, file2] = files;
-
-    if (!file1?.contentBytes || !file2?.contentBytes || !file1?.name || !file2?.name) {
+    const validFiles = files
+      .filter(f =>
+        f?.["$content-type"] &&
+        f?.["$content"] &&
+        isSupportedMime(f?.["$content-type"])
+      )
+      .slice(0, 2);
+      
+      
+    if (validFiles.length < 2) {
       return res.status(400).json({
         status: false,
-        message: "Each file must include 'name' and 'contentBytes'."
+        message: "At least two valid .docx or .pdf files required."
       });
     }
 
-    const buffer1 = Buffer.from(file1.contentBytes, "base64");
-    const buffer2 = Buffer.from(file2.contentBytes, "base64");
+    const [file1, file2] = validFiles;
+    
+    const buffer1 = Buffer.from(file1?.["$content"], "base64");
+    const buffer2 = Buffer.from(file2?.["$content"], "base64");
 
-    const mime1 = guessMimeType(file1.name);
-    const mime2 = guessMimeType(file2.name);
-
-    if (!mime1 || !mime2) {
-      return res.status(400).json({
-        status: false,
-        message: "Unsupported file type. Only .docx and .pdf files are allowed."
-      });
-    }
+    const mime1 = file1?.["$content-type"];
+    const mime2 = file2?.["$content-type"];
 
     if (mime1 !== mime2) {
       return res.status(400).json({
@@ -60,27 +62,37 @@ app.post("/compare", async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=diff-result.pdf");
     doc.pipe(res);
 
-    diff.forEach(part => {
-      const color = part.added ? "green" : part.removed ? "red" : "black";
-      doc.fillColor(color).text(part.value, { continued: false });
-    });
+   diff.forEach(part => {
+  const color = part.added ? "green" : part.removed ? "red" : "black";
+  const text = part.value;
+  const x = doc.x;
+  const y = doc.y;
+
+  doc.fillColor(color).text(text, { continued: false });
+
+  if (color === "red") {
+    const textWidth = doc.widthOfString(text);
+    const textHeight = doc.currentLineHeight();
+    doc
+      .moveTo(x, y + textHeight / 2)
+      .lineTo(x + textWidth, y + textHeight / 2)
+      .strokeColor(color)
+      .stroke();
+  }
+});
 
     doc.end();
-
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 });
 
-function guessMimeType(fileName) {
-  if (fileName.toLowerCase().endsWith(".pdf")) {
-    return "application/pdf";
-  }
-  if (fileName.toLowerCase().endsWith(".docx")) {
-    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  }
-  return null;
+function isSupportedMime(mimeType) {
+  return [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ].includes(mimeType);
 }
 
 async function extractText(buffer, mime) {
