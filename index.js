@@ -13,7 +13,7 @@ app.use(express.json({ limit: "20mb" }));
 app.post("/compare", async (req, res) => {
   try {
     const files = req.body;
-    
+
     if (!Array.isArray(files) || files.length < 2) {
       return res.status(400).json({
         status: false,
@@ -28,17 +28,16 @@ app.post("/compare", async (req, res) => {
         isSupportedMime(f?.["$content-type"])
       )
       .slice(0, 2);
-      
-      
+
     if (validFiles.length < 2) {
       return res.status(400).json({
         status: false,
-        message: "At least two valid .docx or .pdf files required."
+        message: "At least two valid .docx or .pdf files are required."
       });
     }
 
     const [file1, file2] = validFiles;
-    
+
     const buffer1 = Buffer.from(file1?.["$content"], "base64");
     const buffer2 = Buffer.from(file2?.["$content"], "base64");
 
@@ -57,29 +56,38 @@ app.post("/compare", async (req, res) => {
 
     const diff = Diff.diffLines(text1, text2);
 
+    // Generate PDF to buffer
+    const chunks = [];
     const doc = new PDFDocument();
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=diff-result.pdf");
-    doc.pipe(res);
+    doc.on("data", chunk => chunks.push(chunk));
+    doc.on("end", () => {
+      const pdfBuffer = Buffer.concat(chunks);
+      const base64PDF = pdfBuffer.toString("base64");
 
-   diff.forEach(part => {
-  const color = part.added ? "green" : part.removed ? "red" : "black";
-  const text = part.value;
-  const x = doc.x;
-  const y = doc.y;
+      return res.json({
+        "$content-type": "application/pdf",
+        "$content": base64PDF
+      });
+    });
 
-  doc.fillColor(color).text(text, { continued: false });
+    diff.forEach(part => {
+      const color = part.added ? "green" : part.removed ? "red" : "black";
+      const text = part.value;
+      const x = doc.x;
+      const y = doc.y;
 
-  if (color === "red") {
-    const textWidth = doc.widthOfString(text);
-    const textHeight = doc.currentLineHeight();
-    doc
-      .moveTo(x, y + textHeight / 2)
-      .lineTo(x + textWidth, y + textHeight / 2)
-      .strokeColor(color)
-      .stroke();
-  }
-});
+      doc.fillColor(color).text(text, { continued: false });
+
+      if (color === "red") {
+        const textWidth = doc.widthOfString(text);
+        const textHeight = doc.currentLineHeight();
+        doc
+          .moveTo(x, y + textHeight / 2)
+          .lineTo(x + textWidth, y + textHeight / 2)
+          .strokeColor(color)
+          .stroke();
+      }
+    });
 
     doc.end();
   } catch (err) {
