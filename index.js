@@ -1,78 +1,98 @@
 require("dotenv").config();
 const express = require("express");
-const multer = require("multer");
-const mammoth = require("mammoth");
 const pdfParse = require("pdf-parse");
+const mammoth = require("mammoth");
 const Diff = require("diff");
 const PDFDocument = require("pdfkit");
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-const upload = multer({ storage: multer.memoryStorage() }).fields([
-  { name: "file1", maxCount: 1 },
-  { name: "file2", maxCount: 1 },
-]);
+app.use(express.json({ limit: "20mb" }));
 
-app.post("/compare", upload, async (req, res) => {
+app.post("/compare", async (req, res) => {
   try {
-    const file1 = req.files["file1"]?.[0];
-    const file2 = req.files["file2"]?.[0];
+    const files = req.body;
 
-    if (!file1 || !file2) {
-      return res
-        .status(400)
-        .json({ status: false, message: "Both files are required." });
+    if (!Array.isArray(files) || files.length !== 2) {
+      return res.status(400).json({
+        status: false,
+        message: "Send exactly two files in an array with 'name' and 'contentBytes'."
+      });
     }
 
-    if (file1.mimetype !== file2.mimetype) {
-      return res
-        .status(400)
-        .json({ status: false, message: "Files must be the same type." });
+    const [file1, file2] = files;
+
+    if (!file1?.contentBytes || !file2?.contentBytes || !file1?.name || !file2?.name) {
+      return res.status(400).json({
+        status: false,
+        message: "Each file must include 'name' and 'contentBytes'."
+      });
     }
 
-    const text1 = await extractText(file1);
-    const text2 = await extractText(file2);
+    const buffer1 = Buffer.from(file1.contentBytes, "base64");
+    const buffer2 = Buffer.from(file2.contentBytes, "base64");
+
+    const mime1 = guessMimeType(file1.name);
+    const mime2 = guessMimeType(file2.name);
+
+    if (!mime1 || !mime2) {
+      return res.status(400).json({
+        status: false,
+        message: "Unsupported file type. Only .docx and .pdf files are allowed."
+      });
+    }
+
+    if (mime1 !== mime2) {
+      return res.status(400).json({
+        status: false,
+        message: "Both files must be of the same type (.docx or .pdf)."
+      });
+    }
+
+    const text1 = await extractText(buffer1, mime1);
+    const text2 = await extractText(buffer2, mime2);
+
     const diff = Diff.diffLines(text1, text2);
 
-    // Generate PDF from diff
     const doc = new PDFDocument();
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=diff-result.pdf"
-    );
+    res.setHeader("Content-Disposition", "attachment; filename=diff-result.pdf");
     doc.pipe(res);
 
-    diff.forEach((part) => {
+    diff.forEach(part => {
       const color = part.added ? "green" : part.removed ? "red" : "black";
       doc.fillColor(color).text(part.value, { continued: false });
     });
 
     doc.end();
+
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 });
 
-async function extractText(file) {
-  const mime = file.mimetype;
+function guessMimeType(fileName) {
+  if (fileName.toLowerCase().endsWith(".pdf")) {
+    return "application/pdf";
+  }
+  if (fileName.toLowerCase().endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  return null;
+}
 
+async function extractText(buffer, mime) {
   if (mime === "application/pdf") {
-    const data = await pdfParse(file.buffer);
+    const data = await pdfParse(buffer);
     return data.text;
   }
-
-  if (
-    mime ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  ) {
-    const result = await mammoth.extractRawText({ buffer: file.buffer });
+  if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    const result = await mammoth.extractRawText({ buffer });
     return result.value;
   }
-
-  throw new Error("Unsupported file type: " + mime);
+  throw new Error("Unsupported MIME type.");
 }
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
