@@ -7,7 +7,7 @@ const Diff = require("diff");
 const PDFDocument = require("pdfkit");
 
 const app = express();
-const PORT = ProcessingInstruction.env.PORT || 8000;
+const PORT = process.env.PORT || 8000;
 
 const upload = multer({ storage: multer.memoryStorage() }).fields([
   { name: "file1", maxCount: 1 },
