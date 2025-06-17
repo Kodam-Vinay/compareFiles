@@ -5,7 +5,6 @@ const mammoth = require("mammoth");
 const Diff = require("diff");
 const PDFDocument = require("pdfkit");
 const fileType = require("file-type");
-const serverless = require("serverless-http");
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -147,7 +146,4 @@ app.post("/compare/v2", async (req, res) => {
   }
 });
 
-module.exports = app;
-module.exports.handler = serverless(app);
-
-// app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
