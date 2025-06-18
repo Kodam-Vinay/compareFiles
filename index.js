@@ -38,10 +38,7 @@ function generateDiffPDFBase64(diff, includeUnchanged = false) {
     doc.on("data", chunk => chunks.push(chunk));
     doc.on("end", () => {
       const base64 = Buffer.concat(chunks).toString("base64");
-      resolve({
-        "$content-type": "application/pdf",
-        "$content": base64
-      });
+      resolve(base64);
     });
 
     doc.font("Times-Roman").fontSize(12);
@@ -73,7 +70,6 @@ function generateDiffPDFBase64(diff, includeUnchanged = false) {
     doc.end();
   });
 }
-
 
 async function detectMime(buffer, originalMime) {
   if (originalMime !== "application/octet-stream") return originalMime;
