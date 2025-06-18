@@ -162,14 +162,20 @@ app.post("/compare/v2", async (req, res) => {
       generateDiffPDFBase64(diff)
     ]);
 
+    // res.json({
+    //   status: true,
+    //   message: "Comparison completed",
+    //   files: {
+    //     file1: { "$content-type": "application/pdf", "$content": pdf1 },
+    //     file2: { "$content-type": "application/pdf", "$content": pdf2 },
+    //     diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
+    //   }
+    // });
+    const generatedPdfs = [pdf1, pdf2, pdfDiff]
     res.json({
       status: true,
       message: "Comparison completed",
-      files: {
-        file1: { "$content-type": "application/pdf", "$content": pdf1 },
-        file2: { "$content-type": "application/pdf", "$content": pdf2 },
-        diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
-      }
+      data: generatedPdfs
     });
   } catch (err) {
     console.error("Error:", err);
