@@ -30,7 +30,7 @@ function generateBase64Pdf(text) {
   });
 } 
 
-function generateDiffPDFBase64(diff, includeUnchanged = false) {
+function generateDiffPDFBase64(diff, includeUnchanged = true) {
   return new Promise((resolve) => {
     const doc = new PDFDocument();
     const chunks = [];
@@ -177,6 +177,60 @@ app.post("/compare/v2", async (req, res) => {
       message: "Comparison completed",
       data: generatedPdfs
     });
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ status: false, message: "Internal Server Error" });
+  }
+});
+
+app.post("/compare/v3", async (req, res) => {
+  try {
+    const files = req.body;
+    if (!Array.isArray(files) || files.length < 2) {
+      return res.status(400).json({ status: false, message: "At least two files are required." });
+    }
+
+    const enrichedFiles = await Promise.all(
+      files.map(async file => {
+        const buffer = Buffer.from(file?.["$content"], "base64");
+        const mimeType = await detectMime(buffer, file?.["$content-type"]);
+        return { ...file, "$content-type": mimeType, $buffer: buffer };
+      })
+    );
+
+    const validFiles = enrichedFiles.filter(f => isSupportedMime(f["$content-type"]));
+
+    if (validFiles.length < 2) {
+      return res.status(400).json({ status: false, message: "At least two valid .docx or .pdf files are required." });
+    }
+
+    if (validFiles[0]["$content-type"] !== validFiles[1]["$content-type"]) {
+      return res.status(400).json({ status: false, message: "Both files must be of the same type (.docx or .pdf)." });
+    }
+
+    const texts = await Promise.all(
+      validFiles.map(file => extractText(file.$buffer, file["$content-type"]))
+    );
+
+    const diff = Diff.diffLines(texts[0], texts[1]);
+
+    const difference = await generateDiffPDFBase64(diff)
+    
+    res.status(200).send({
+      status:true,
+      message:"Comparison document generated",
+      data:difference
+    })
+
+    // res.json({
+    //   status: true,
+    //   message: "Comparison completed",
+    //   files: {
+    //     file1: { "$content-type": "application/pdf", "$content": pdf1 },
+    //     file2: { "$content-type": "application/pdf", "$content": pdf2 },
+    //     diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
+    //   }
+    // });
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
