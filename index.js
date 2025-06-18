@@ -225,10 +225,14 @@ app.post("/compare/v3", async (req, res) => {
 
     const difference = await generateDiffPDFBase64(diff)
     
+
     res.status(200).send({
       status:true,
       message:"Comparison document generated",
-      data:difference
+      data:{
+        "$content-type": "application/pdf",
+        "$content": base64PDF
+      }
     })
 
     // res.json({
