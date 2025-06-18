@@ -16,6 +16,65 @@ const SUPPORTED_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ];
 
+function generateBase64Pdf(text) {
+   return new Promise(resolve => {
+    const chunks = [];
+    const doc = new PDFDocument();
+    doc.on("data", chunk => chunks.push(chunk));
+    doc.on("end", () => {
+      const base64 = Buffer.concat(chunks).toString("base64");
+      resolve(base64);
+    });
+    doc.font("Times-Roman").fontSize(12).text(text || "No content available");
+    doc.end();
+  });
+} 
+
+function generateDiffPDFBase64(diff, includeUnchanged = false) {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument();
+    const chunks = [];
+
+    doc.on("data", chunk => chunks.push(chunk));
+    doc.on("end", () => {
+      const base64 = Buffer.concat(chunks).toString("base64");
+      resolve({
+        "$content-type": "application/pdf",
+        "$content": base64
+      });
+    });
+
+    doc.font("Times-Roman").fontSize(12);
+    if (!includeUnchanged) {
+      doc.text("Changes between files:\n\n");
+    }
+
+    diff.forEach(part => {
+      const unchanged = !part.added && !part.removed;
+      if (!includeUnchanged && unchanged) return;
+
+      const color = part.added ? "green" : part.removed ? "red" : "black";
+      const text = part.value.trim();
+      if (!text) return;
+
+      const x = doc.x, y = doc.y;
+      doc.fillColor(color).text(text);
+      if (part.removed) {
+        const width = doc.widthOfString(text);
+        const height = doc.currentLineHeight();
+        doc
+          .moveTo(x, y + height / 2)
+          .lineTo(x + width, y + height / 2)
+          .strokeColor(color)
+          .stroke();
+      }
+    });
+
+    doc.end();
+  });
+}
+
+
 async function detectMime(buffer, originalMime) {
   if (originalMime !== "application/octet-stream") return originalMime;
   const type = await fileType.fileTypeFromBuffer(buffer);
@@ -35,44 +94,6 @@ async function extractText(buffer, mime) {
     default:
       throw new Error("Unsupported MIME type.");
   }
-}
-
-function generateDiffPDF(diff, res, includeUnchanged = false) {
-  const chunks = [];
-  const doc = new PDFDocument();
-
-  doc.on("data", chunk => chunks.push(chunk));
-  doc.on("end", () => {
-    const base64PDF = Buffer.concat(chunks).toString("base64");
-    res.json({ "$content-type": "application/pdf", "$content": base64PDF });
-  });
-
-  doc.font("Times-Roman").fontSize(12);
-  if (!includeUnchanged) doc.text("Changes between files:\n\n");
-
-  diff.forEach(part => {
-    const unchanged = !part.added && !part.removed;
-    if (!includeUnchanged && unchanged) return;
-
-    const color = part.added ? "green" : part.removed ? "red" : "black";
-    const text = part.value.trim();
-    if (!text) return;
-
-    const x = doc.x, y = doc.y;
-    doc.fillColor(color).text(text, { continued: false });
-
-    if (part.removed) {
-      const textWidth = doc.widthOfString(text);
-      const textHeight = doc.currentLineHeight();
-      doc
-        .moveTo(x, y + textHeight / 2)
-        .lineTo(x + textWidth, y + textHeight / 2)
-        .strokeColor(color)
-        .stroke();
-    }
-  });
-
-  doc.end();
 }
 
 app.post("/compare", async (req, res) => {
@@ -138,8 +159,22 @@ app.post("/compare/v2", async (req, res) => {
     );
 
     const diff = Diff.diffLines(texts[0], texts[1]);
-    generateDiffPDF(diff, res);
 
+   const [pdf1, pdf2, pdfDiff] = await Promise.all([
+      generateBase64Pdf(texts[0]),
+      generateBase64Pdf(texts[1]),
+      generateDiffPDFBase64(diff)
+    ]);
+
+    res.json({
+      status: true,
+      message: "Comparison completed",
+      files: {
+        file1: { "$content-type": "application/pdf", "$content": pdf1 },
+        file2: { "$content-type": "application/pdf", "$content": pdf2 },
+        diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
+      }
+    });
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
