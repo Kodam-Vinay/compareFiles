@@ -37,7 +37,7 @@ async function extractText(buffer, mime) {
   }
 }
 
-function generateDiffPDF(diff, res, includeUnchanged = true) {
+function generateDiffPDF(diff, res, includeUnchanged = false) {
   const chunks = [];
   const doc = new PDFDocument();
 
