@@ -187,7 +187,6 @@ app.post("/compare", async (req, res) => {
   }
 });
  
-
 app.post("/compare/v2", async (req, res) => {
   try {
     const files = req.body;
@@ -219,26 +218,21 @@ app.post("/compare/v2", async (req, res) => {
 
     const diff = Diff.diffLines(texts[0], texts[1]);
 
-   const [pdf1, pdf2, pdfDiff] = await Promise.all([
+   const generatedPdfs = await Promise.all([
       generateBase64Pdf(texts[0]),
       generateBase64Pdf(texts[1]),
       generateDiffPDFBase64(diff)
     ]);
 
-    // res.json({
-    //   status: true,
-    //   message: "Comparison completed",
-    //   files: {
-    //     file1: { "$content-type": "application/pdf", "$content": pdf1 },
-    //     file2: { "$content-type": "application/pdf", "$content": pdf2 },
-    //     diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
-    //   }
-    // });
-    const generatedPdfs = [pdf1, pdf2, pdfDiff]
+    const allPdfFiles = generatedPdfs.map(pdf => {
+      return {
+        "$content-type": "application/pdf", "$content": pdf
+      }
+    })
     res.json({
       status: true,
       message: "Comparison completed",
-      data: generatedPdfs
+      data: allPdfFiles
     });
   } catch (err) {
     console.error("Error:", err);
@@ -279,7 +273,6 @@ app.post("/compare/v3", async (req, res) => {
 
     const difference = await generateDiffPDFBase64(diff)
     
-
     res.status(200).send({
       status:true,
       message:"Comparison document generated",
@@ -288,16 +281,6 @@ app.post("/compare/v3", async (req, res) => {
         "$content": difference
       }
     })
-
-    // res.json({
-    //   status: true,
-    //   message: "Comparison completed",
-    //   files: {
-    //     file1: { "$content-type": "application/pdf", "$content": pdf1 },
-    //     file2: { "$content-type": "application/pdf", "$content": pdf2 },
-    //     diff:  { "$content-type": "application/pdf", "$content": pdfDiff }
-    //   }
-    // });
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
