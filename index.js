@@ -6,7 +6,7 @@ const Diff = require("diff");
 const PDFDocument = require("pdfkit");
 const fileType = require("file-type");
 
-const app = express();
+app.use(express.json({ limit: "20mb" }));
 const PORT = process.env.PORT || 8000;
 
 app.use(express.json());
