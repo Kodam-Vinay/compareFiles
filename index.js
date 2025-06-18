@@ -5,6 +5,7 @@ const mammoth = require("mammoth");
 const Diff = require("diff");
 const PDFDocument = require("pdfkit");
 const fileType = require("file-type");
+const { PassThrough } = require("stream");
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -31,43 +32,51 @@ function generateBase64Pdf(text) {
 } 
 
 function generateDiffPDFBase64(diff, includeUnchanged = true) {
-  return new Promise((resolve) => {
-    const doc = new PDFDocument();
-    const chunks = [];
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument();
+      const stream = new PassThrough();
+      const chunks = [];
 
-    doc.on("data", chunk => chunks.push(chunk));
-    doc.on("end", () => {
-      const base64 = Buffer.concat(chunks).toString("base64");
-      resolve(base64);
-    });
+      doc.pipe(stream);
 
-    doc.font("Times-Roman").fontSize(12);
-    if (!includeUnchanged) {
-      doc.text("Changes between files:\n\n");
-    }
+      stream.on("data", chunk => chunks.push(chunk));
+      stream.on("end", () => {
+        const base64 = Buffer.concat(chunks).toString("base64");
+        resolve(base64);
+      });
 
-    diff.forEach(part => {
-      const unchanged = !part.added && !part.removed;
-      if (!includeUnchanged && unchanged) return;
+      doc.font("Times-Roman").fontSize(12);
 
-      const color = part.added ? "green" : part.removed ? "red" : "black";
-      const text = part.value.trim();
-      if (!text) return;
-
-      const x = doc.x, y = doc.y;
-      doc.fillColor(color).text(text);
-      if (part.removed) {
-        const width = doc.widthOfString(text);
-        const height = doc.currentLineHeight();
-        doc
-          .moveTo(x, y + height / 2)
-          .lineTo(x + width, y + height / 2)
-          .strokeColor(color)
-          .stroke();
+      if (!includeUnchanged) {
+        doc.text("Changes between files:\n\n");
       }
-    });
 
-    doc.end();
+      diff.forEach(part => {
+        const unchanged = !part.added && !part.removed;
+        if (!includeUnchanged && unchanged) return;
+
+        const color = part.added ? "green" : part.removed ? "red" : "black";
+        const text = part.value.trim();
+        if (!text) return;
+
+        const x = doc.x, y = doc.y;
+        doc.fillColor(color).text(text);
+        if (part.removed) {
+          const width = doc.widthOfString(text);
+          const height = doc.currentLineHeight();
+          doc
+            .moveTo(x, y + height / 2)
+            .lineTo(x + width, y + height / 2)
+            .strokeColor(color)
+            .stroke();
+        }
+      });
+
+      doc.end(); // important to finalize
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
