@@ -10,7 +10,7 @@ const { PassThrough } = require("stream");
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-app.use(express.json({limit: "20mb"}));
+app.use(express.json({ limit: "20mb" }));
 
 const SUPPORTED_MIME_TYPES = [
   "application/pdf",
@@ -18,7 +18,7 @@ const SUPPORTED_MIME_TYPES = [
 ];
 
 function generateBase64Pdf(text) {
-   return new Promise(resolve => {
+  return new Promise(resolve => {
     const chunks = [];
     const doc = new PDFDocument();
     doc.on("data", chunk => chunks.push(chunk));
@@ -29,9 +29,9 @@ function generateBase64Pdf(text) {
     doc.font("Times-Roman").fontSize(12).text(text || "No content available");
     doc.end();
   });
-} 
+}
 
-function generateDiffPDFBase64(diff, includeUnchanged = true) {
+function generateDiffPDFBase64(diff, wordLevel = false) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument();
@@ -39,7 +39,6 @@ function generateDiffPDFBase64(diff, includeUnchanged = true) {
       const chunks = [];
 
       doc.pipe(stream);
-
       stream.on("data", chunk => chunks.push(chunk));
       stream.on("end", () => {
         const base64 = Buffer.concat(chunks).toString("base64");
@@ -47,33 +46,32 @@ function generateDiffPDFBase64(diff, includeUnchanged = true) {
       });
 
       doc.font("Times-Roman").fontSize(12);
-
-      if (!includeUnchanged) {
-        doc.text("Changes between files:\n\n");
-      }
+      doc.text("Differences between documents:\n\n");
 
       diff.forEach(part => {
-        const unchanged = !part.added && !part.removed;
-        if (!includeUnchanged && unchanged) return;
-
         const color = part.added ? "green" : part.removed ? "red" : "black";
-        const text = part.value.trim();
-        if (!text) return;
-
-        const x = doc.x, y = doc.y;
-        doc.fillColor(color).text(text);
-        if (part.removed) {
-          const width = doc.widthOfString(text);
-          const height = doc.currentLineHeight();
-          doc
-            .moveTo(x, y + height / 2)
-            .lineTo(x + width, y + height / 2)
-            .strokeColor(color)
-            .stroke();
-        }
+        const words = part.value.split(/(\s+)/); // Preserve spacing
+        words.forEach(word => {
+          if (!word.trim()) {
+            doc.text(word, { continued: true });
+          } else {
+            const x = doc.x;
+            const y = doc.y;
+            doc.fillColor(color).text(word, { continued: true });
+            if (color === "red") {
+              const width = doc.widthOfString(word);
+              const height = doc.currentLineHeight();
+              doc
+                .moveTo(x, y + height / 2)
+                .lineTo(x + width, y + height / 2)
+                .strokeColor(color)
+                .stroke();
+            }
+          }
+        });
       });
 
-      doc.end(); // important to finalize
+      doc.end();
     } catch (err) {
       reject(err);
     }
@@ -147,7 +145,6 @@ app.post("/compare", async (req, res) => {
 
     const diff = Diff.diffLines(text1, text2);
 
-    // Generate PDF to buffer
     const chunks = [];
     const doc = new PDFDocument();
     doc.on("data", chunk => chunks.push(chunk));
@@ -186,7 +183,7 @@ app.post("/compare", async (req, res) => {
     res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 });
- 
+
 app.post("/compare/v2", async (req, res) => {
   try {
     const files = req.body;
@@ -218,7 +215,7 @@ app.post("/compare/v2", async (req, res) => {
 
     const diff = Diff.diffLines(texts[0], texts[1]);
 
-   const generatedPdfs = await Promise.all([
+    const generatedPdfs = await Promise.all([
       generateBase64Pdf(texts[0]),
       generateBase64Pdf(texts[1]),
       generateDiffPDFBase64(diff)
@@ -228,7 +225,8 @@ app.post("/compare/v2", async (req, res) => {
       return {
         "$content-type": "application/pdf", "$content": pdf
       }
-    })
+    });
+
     res.json({
       status: true,
       message: "Comparison completed",
@@ -269,18 +267,25 @@ app.post("/compare/v3", async (req, res) => {
       validFiles.map(file => extractText(file.$buffer, file["$content-type"]))
     );
 
-    const diff = Diff.diffLines(texts[0], texts[1]);
+    const diff = Diff.diffWords(texts[0], texts[1]);
 
-    const difference = await generateDiffPDFBase64(diff)
-    
-    res.status(200).send({
-      status:true,
-      message:"Comparison document generated",
-      data:{
-        "$content-type": "application/pdf",
-        "$content": difference
-      }
-    })
+    const generatedPdfs = await Promise.all([
+      generateBase64Pdf(texts[0]),
+      generateBase64Pdf(texts[1]),
+      generateDiffPDFBase64(diff, true)
+    ]);
+
+    const allPdfFiles = generatedPdfs.map(pdf => {
+      return {
+        "$content-type": "application/pdf", "$content": pdf
+      };
+    });
+
+    res.json({
+      status: true,
+      message: "Comparison completed",
+      data: allPdfFiles
+    });
   } catch (err) {
     console.error("Error:", err);
     res.status(500).json({ status: false, message: "Internal Server Error" });
