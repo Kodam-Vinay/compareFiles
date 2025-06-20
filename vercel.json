@@ -1,10 +1,15 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/compare.js", "use": "@vercel/node" }
+    {
+      "src": "index.js",
+      "use": "@vercel/node"
+    }
   ],
   "routes": [
-    { "src": "/compare", "dest": "/api/compare.js" },
-    { "src": "/compare/v2", "dest": "/api/compare.js" }
+    {
+      "src": "/.*",
+      "dest": "/index.js"
+    }
   ]
 }
