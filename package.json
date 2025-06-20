@@ -1,24 +1,21 @@
 {
-  "name": "comparefiles",
+  "name": "document-comparison-api",
   "version": "1.0.0",
+  "description": "API for comparing and converting document formats",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "cors": "^2.8.5",
-    "diff": "^8.0.2",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "file-type": "^21.0.0",
-    "mammoth": "^1.9.1",
-    "multer": "^2.0.1",
+    "diff": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "file-type": "^16.5.4",
+    "libreoffice-convert": "^1.6.1",
+    "mammoth": "^1.4.23",
     "pdf-parse": "^1.1.1",
-    "pdfkit": "^0.17.1"
+    "pdfkit": "^0.14.0",
+    "util": "^0.12.5"
   }
 }
